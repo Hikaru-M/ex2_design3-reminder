@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>服薬確認ページ</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            text-align: center;
+            padding: 10px 10px 30px;
+            margin: 0;
+        }
+        .container {
+            background-color: #fff;
+            padding: 8px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            max-width: 100%;
+            margin: 0 auto;
+            text-align: center;
+            box-sizing: border-box;
+            position: relative;
+        }
+        .header {
+            font-size: 1.2em;
+            margin-bottom: 4px;
+        }
+        .time {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .medication-info {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 8px;
+        }
+        .medication-info img {
+            width: 60px;
+            height: 60px;
+            border-radius: 30px;
+            margin-right: 6px;
+        }
+        .medication-dosage {
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+        .buttons {
+            display: flex; /* 常に表示 */
+            justify-content: space-between;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .buttons button {
+            flex: 1;
+            padding: 10px;
+            font-size: 1.5em;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background-color: #ADD8E6;
+            color: #1E90FF;
+            font-weight: bold;
+        }
+        video {
+            width: 100%;
+            height: 320px;
+            border-radius: 10px;
+            transform: scaleX(-1);
+            object-fit: cover;
+            object-position: center;
+            margin-bottom: 8px;
+            border: 5px solid red; /* 初期状態は赤い枠 */
+            z-index: 1; /* ビデオを手前に表示 */
+        }
+        .message {
+            font-size: 1.2em;
+            color: red;
+            margin-bottom: 10px;
+        }
+        .face-frame {
+            position: absolute;
+            top: 110px; /* 顔枠を中央付近に表示 */
+            left: 50%;
+            transform: translateX(-50%);
+            width: 180px;
+            height: 240px; /* 楕円形 */
+            border: 3px solid white; /* 白色の細い枠 */
+            border-radius: 50%; /* 楕円形にする */
+            pointer-events: none; /* 枠が操作を妨げない */
+            z-index: 2; /* ビデオの上に表示 */
+        }
+    </style>
+    <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header"></div>
+        <div class="time"></div>
+        <!-- 自己鏡映像 -->
+        <video id="cameraStream" autoplay playsinline></video>
+        <div class="face-frame"></div> <!-- 顔を当てはめる楕円形の枠 -->
+        <div class="message">顔を見てください</div>
+        <div class="medication-info">
+            <img src="https://github.com/Hikaru-M/medication-reminder/blob/main/capsule-1.jpg?raw=true" alt="薬の画像">
+            <div class="medication-dosage">処方薬 1錠</div>
+        </div>
+        <div class="buttons">
+            <!-- ボタンが常に表示 -->
+            <button onclick="window.location.href='https://docs.google.com/forms/d/e/1FAIpQLScVyBMwDbuPbU_M9-sHilc0uwZ_hOSEjr3cR4Fni0Ak9E2BNw/viewform?usp=pp_url&entry.762371884=%E3%82%B9%E3%82%AD%E3%83%83%E3%83%97'">スキップ</button>
+            <button onclick="window.location.href='https://docs.google.com/forms/d/e/1FAIpQLScVyBMwDbuPbU_M9-sHilc0uwZ_hOSEjr3cR4Fni0Ak9E2BNw/viewform?usp=pp_url&entry.762371884=%E6%9C%8D%E8%96%AC'">服薬</button>
+        </div>
+    </div>
+
+    <script>
+        let model; // モデルをグローバルに保持
+
+        // 現在の日付と時刻を表示する関数
+        function updateDateTime() {
+            const now = new Date();
+            const weekdays = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'];
+            const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+
+            const dayOfWeek = weekdays[now.getDay()];
+            const day = now.getDate();
+            const month = months[now.getMonth()];
+
+            let hours = now.getHours();
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            const period = (hours >= 5 && hours < 12) ? '朝' :
+                           (hours >= 12 && hours < 18) ? '昼' : '夜';
+
+            document.querySelector('.header').textContent = `${month} ${day}日 ${dayOfWeek}`;
+            document.querySelector('.time').textContent = `${period}：${hours}:${minutes} の服薬`;
+        }
+
+        // カメラを起動して映像を取得
+        const video = document.getElementById('cameraStream');
+
+        async function initializeCamera() {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    video.srcObject = stream;
+                    video.play();
+                } catch (error) {
+                    console.error("カメラのアクセスに失敗しました: ", error);
+                }
+            } else {
+                console.error("このブラウザはカメラをサポートしていません。");
+            }
+        }
+
+        // モデルとカメラを独立して初期化
+        window.onload = () => {
+            updateDateTime();
+            initializeCamera();  // カメラを即座に初期化
+            loadModelAndStartDetection();  // モデルをロードして顔検出を開始
+        };
+
+        async function loadModelAndStartDetection() {
+            model = await blazeface.load();  // モデルをロード
+            startFaceDetection();  // 顔検出開始
+        }
+
+        // 顔検出を実行
+        async function startFaceDetection() {
+            const message = document.querySelector('.message');
+
+            // 顔検出をループで実行（500msごとに実行）
+            setInterval(async () => {
+                if (model) {
+                    const predictions = await model.estimateFaces(video, { maxFaces: 1 }); // 1つの顔だけを検出
+
+                    if (predictions.length > 0) {
+                        // 顔が検出された場合の処理
+                        video.style.border = '5px solid lime';  // 緑の枠に変更
+                        message.textContent = '服薬するか決めてください';
+                        message.style.color = 'green';
+                    } else {
+                        // 顔が検出されなかった場合の処理
+                        video.style.border = '5px solid red';  // 赤い枠のまま
+                        message.textContent = '顔を見てください';
+                        message.style.color = 'red';
+                    }
+                }
+            }, 500);  // 500msごとに顔検出を実行
+        }
+    </script>
+</body>
+</html>
